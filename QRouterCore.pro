@@ -8,6 +8,7 @@ CONFIG += console
 CONFIG -= app_bundle
 
 TEMPLATE = app
+include (../QRouterLib/qrouterlib.pri)
 
 SOURCES += main.cpp \
     core.cpp \
@@ -16,3 +17,5 @@ SOURCES += main.cpp \
 HEADERS += \
     core.h \
     cbor.h
+
+DISTFILES +=

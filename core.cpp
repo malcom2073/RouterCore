@@ -32,8 +32,56 @@ void Core::newConnection()
 	qDebug() << "Incoming connection";
 	QTcpSocket *socket = m_tcpServer->nextPendingConnection();
 	m_bufferMap.insert(socket,QByteArray());
+	packetizerMap.insert(socket,new Packetizer(socket));
+	connect(packetizerMap[socket],SIGNAL(newPacket(QObject*,QByteArray)),this,SLOT(newPacket(QObject*,QByteArray)));
 	connect(socket,SIGNAL(readyRead()),this,SLOT(socketReadyRead()));
+	sendDebugMessage("Incoming connection!");
 }
+void Core::newPacket(QObject *identifier,QByteArray packet)
+{
+	QTcpSocket *socket = qobject_cast<QTcpSocket*>(identifier);
+	Packetizer *packetizer = qobject_cast<Packetizer*>(sender());
+	qDebug() << "Incoming Packet";
+	QVariant packetvariant = CBOR::unpack(packet.mid(0,packet.size()-1));
+	QVariantMap result = packetvariant.toMap();
+	if (!result.contains("type"))
+	{
+		return;
+	}
+	if (result.value("type") == "debug")
+	{
+		QVariantMap debuginfo = result.value("value").toMap();
+		if (debuginfo.value("debugtype") == "AllParams")
+		{
+			qDebug() << "All debug parameters requested!";
+			m_debugSocketList.append(socket);
+			sendDebugMessage("All debug parameters requested");
+
+		}
+	}
+	if (result.value("type") == "data")
+	{
+		for (int i=0;i<m_debugSocketList.size();i++)
+		{
+			m_debugSocketList.at(i)->write(packetizer->generatePacket(packet));
+		}
+
+	}
+	qDebug() << packetvariant.toMap();
+}
+void Core::sendDebugMessage(QString message)
+{
+	QVariantMap map;
+	map["type"] = "debug";
+	map["value"] = message;
+	QByteArray mappacked = CBOR::pack(map);
+	QByteArray packet = Packetizer::generatePacket(mappacked);
+	for (int i=0;i<m_debugSocketList.size();i++)
+	{
+		m_debugSocketList.at(i)->write(packet);
+	}
+}
+
 void Core::socketReadyRead()
 {
 	QTcpSocket *socket = qobject_cast<QTcpSocket*>(sender());
@@ -41,8 +89,7 @@ void Core::socketReadyRead()
 	{
 		return;
 	}
-	m_bufferMap[socket].append(socket->readAll());
-	parseBuffer(socket);
+	packetizerMap[socket]->parseBuffer(socket->readAll());
 
 }
 void Core::parseBuffer(QTcpSocket *socket)
@@ -74,8 +121,7 @@ void Core::parseBuffer(QTcpSocket *socket)
 }
 
 void Core::newConnection()
-{
-	qDebug() << "new Connection";
+{	qDebug() << "new Connection";
 	QWebSocket *pSocket = m_pWebSocketServer->nextPendingConnection();
 qDebug() << "new Connections";
 
